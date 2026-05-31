@@ -1,0 +1,41 @@
+import { authService } from './authService.js'
+
+const API_URL = import.meta.env.VITE_API_URL
+
+async function authRequest(path, options = {}) {
+  const token = authService.getToken()
+  const response = await fetch(`${API_URL}${path}`, {
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+      ...options.headers,
+    },
+    ...options,
+  })
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}))
+    throw new Error(err?.detail || 'Помилка запиту')
+  }
+  return response.json()
+}
+
+export const tripService = {
+  createTrip(data) {
+    return authRequest('/trips/', { method: 'POST', body: JSON.stringify(data) })
+  },
+  getMyTrips(limit = 10, offset = 0) {
+    return authRequest(`/trips/my?limit=${limit}&offset=${offset}`)
+  },
+  getAvailable(limit = 10, offset = 0) {
+    return authRequest(`/trips/available?limit=${limit}&offset=${offset}`)
+  },
+  acceptTrip(tripId) {
+    return authRequest(`/trips/${tripId}/accept`, { method: 'POST' })
+  },
+  completeTrip(tripId) {
+    return authRequest(`/trips/${tripId}/complete`, { method: 'POST' })
+  },
+  cancelTrip(tripId) {
+    return authRequest(`/trips/${tripId}/cancel`, { method: 'POST' })
+  },
+}
