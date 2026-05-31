@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { authService } from '../services/authService.js'
 import { userService } from '../services/userService.js'
@@ -13,6 +13,7 @@ const trips = ref([])
 const loading = ref(false)
 const error = ref(null)
 const showOrderForm = ref(false)
+let pollInterval = null
 
 const mapPicker = ref(null)
 
@@ -48,6 +49,17 @@ onMounted(async () => {
     return
   }
   await loadData()
+  pollInterval = setInterval(async () => {
+    if (isDriver.value) {
+      trips.value = await tripService.getAvailable()
+    } else {
+      trips.value = await tripService.getMyTrips()
+    }
+  }, 5000)
+})
+
+onUnmounted(() => {
+  clearInterval(pollInterval)
 })
 
 async function loadData() {
