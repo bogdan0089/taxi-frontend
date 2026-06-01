@@ -25,12 +25,24 @@ export const authService = {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     })
+    // Зберігаємо обидва токени
     localStorage.setItem('token', data.access_token)
+    localStorage.setItem('refresh_token', data.refresh_token)
     return data
+  },
+
+  // Оновлює access token через refresh token
+  async refresh() {
+    const refreshToken = localStorage.getItem('refresh_token')
+    if (!refreshToken) throw new Error('No refresh token')
+    const data = await request(`/auth/refresh/${refreshToken}`, { method: 'POST' })
+    localStorage.setItem('token', data.access_token)
+    return data.access_token
   },
 
   logout() {
     localStorage.removeItem('token')
+    localStorage.removeItem('refresh_token')
   },
 
   getToken() {

@@ -48,6 +48,11 @@ const isDriver = computed(() => user.value?.role === 'driver')
 const completedTrips = computed(() => trips.value.filter(t => t.status === 'completed'))
 const totalEarned = computed(() => completedTrips.value.reduce((s, t) => s + (t.price || 0), 0).toFixed(2))
 const activeTrip = computed(() => trips.value.find(t => ['waiting', 'in_progress'].includes(t.status)))
+const driver = ref(null)
+const ratingScore = ref(0)
+const ratingTripId = ref(null)
+const ratingDriverId = ref(null)
+const ratingSubmitted = ref(false)
 
 onMounted(async () => {
   if (!authService.isAuthenticated()) { router.push('/'); return }
@@ -73,7 +78,22 @@ async function loadData() {
 
 async function refreshTrips() {
   try {
+    const prev = activeTrip.value
     trips.value = isDriver.value ? await tripService.getAvailable() : await tripService.getMyTrips()
+    if (!isDriver.value && activeTrip.value?.driver_id) {
+      driver.value = await userService.getUser(activeTrip.value.driver_id)
+    } else {
+      driver.value = null
+    }
+    // Відкриваємо форму оцінки якщо поїздка щойно завершилась
+    if (!isDriver.value && prev?.status === 'in_progress') {
+      const justCompleted = trips.value.find(t => t.id === prev.id && t.status === 'completed')
+      if (justCompleted && !ratingSubmitted.value) {
+        ratingTripId.value = justCompleted.id
+        ratingDriverId.value = justCompleted.driver_id
+        ratingScore.value = 0
+      }
+    }
   } catch {}
 }
 
@@ -170,6 +190,22 @@ async function savePayment() {
 
 function logout() { authService.logout(); router.push('/') }
 
+async function submitRating() {
+  if (!ratingScore.value || !ratingTripId.value) return
+  try {
+    const token = authService.getToken()
+    await fetch(`${import.meta.env.VITE_API_URL}/ratings/?trip_id=${ratingTripId.value}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ driver_id: ratingDriverId.value, score: ratingScore.value }),
+    })
+    ratingSubmitted.value = true
+    ratingTripId.value = null
+    success.value = 'Оцінку збережено!'
+    setTimeout(() => success.value = null, 3000)
+  } catch (e) { error.value = e.message }
+}
+
 const statusLabel = { waiting: 'Очікує', in_progress: 'В дорозі', completed: 'Завершено', cancelled: 'Скасовано' }
 const statusColor = { waiting: '#f59e0b', in_progress: '#3b82f6', completed: '#10b981', cancelled: '#ef4444' }
 </script>
@@ -227,7 +263,27 @@ const statusColor = { waiting: '#f59e0b', in_progress: '#3b82f6', completed: '#1
             </div>
             <div class="route-row"><span class="dot blue"></span><span class="addr">{{ activeTrip.pickup_address?.split(',')[0] }}</span></div>
             <div class="route-row"><span class="dot green"></span><span class="addr">{{ activeTrip.dropoff_address?.split(',')[0] }}</span></div>
+
+            <!-- Картка водія -->
+            <div v-if="driver && activeTrip.status === 'in_progress'" class="driver-card">
+              <div class="driver-avatar">{{ driver.full_name?.charAt(0).toUpperCase() }}</div>
+              <div class="driver-info">
+                <div class="driver-name">{{ driver.full_name }}</div>
+                <div class="driver-rating">⭐ {{ driver.avg_rating?.toFixed(1) || '0.0' }}</div>
+              </div>
+            </div>
+
             <button v-if="activeTrip.status === 'waiting'" @click="cancelTrip(activeTrip.id)" class="btn-cancel">Скасувати поїздку</button>
+          </div>
+
+          <!-- Форма оцінки -->
+          <div v-if="ratingTripId" class="rating-form">
+            <div class="rating-title">Оцініть водія</div>
+            <div class="stars">
+              <span v-for="n in 5" :key="n" class="star" :class="{ active: n <= ratingScore }" @click="ratingScore = n">★</span>
+            </div>
+            <button @click="submitRating" :disabled="!ratingScore" class="btn-primary full">Надіслати оцінку</button>
+            <button @click="ratingTripId = null" class="btn-ghost">Пропустити</button>
           </div>
 
           <div v-else class="order-section">
@@ -534,6 +590,56 @@ const statusColor = { waiting: '#f59e0b', in_progress: '#3b82f6', completed: '#1
   cursor: pointer;
   color: #a1a1aa;
 }
+
+.rating-form {
+  background: #27272a;
+  border-radius: 14px;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.rating-title { font-weight: 700; color: #f4f4f5; font-size: 0.95rem; }
+
+.stars { display: flex; gap: 8px; }
+
+.star {
+  font-size: 2rem;
+  color: #3f3f46;
+  cursor: pointer;
+  transition: color 0.15s, transform 0.15s;
+  user-select: none;
+}
+.star:hover, .star.active { color: #fbbf24; transform: scale(1.15); }
+
+.driver-card {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: #3f3f46;
+  border-radius: 12px;
+  padding: 0.75rem;
+  margin-top: 4px;
+}
+
+.driver-avatar {
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  background: #4f46e5;
+  color: #fff;
+  font-size: 1.1rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.driver-info { display: flex; flex-direction: column; gap: 2px; }
+.driver-name { font-weight: 600; font-size: 0.9rem; color: #f4f4f5; }
+.driver-rating { font-size: 0.78rem; color: #a1a1aa; }
 
 .btn-cancel {
   width: 100%;

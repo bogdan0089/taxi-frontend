@@ -9,43 +9,51 @@ function authHeaders() {
   }
 }
 
+async function authFetch(url, options = {}, retry = true) {
+  const response = await fetch(url, { headers: authHeaders(), ...options })
+  if (response.status === 401 && retry) {
+    try {
+      await authService.refresh()
+      return authFetch(url, options, false)
+    } catch {
+      authService.logout()
+      window.location.href = '/'
+      return
+    }
+  }
+  if (!response.ok) throw new Error('Помилка запиту')
+  return response.json()
+}
+
 export const userService = {
   async getMe() {
     const token = authService.getToken()
     if (!token) return null
     const payload = JSON.parse(atob(token.split('.')[1]))
-    const res = await fetch(`${API_URL}/users/${payload.sub}`, {
-      headers: authHeaders(),
-    })
-    return res.json()
+    return authFetch(`${API_URL}/users/${payload.sub}`)
   },
 
   async updateMe(data) {
     const token = authService.getToken()
     const payload = JSON.parse(atob(token.split('.')[1]))
-    const res = await fetch(`${API_URL}/users/${payload.sub}`, {
+    return authFetch(`${API_URL}/users/${payload.sub}`, {
       method: 'PATCH',
-      headers: authHeaders(),
       body: JSON.stringify(data),
     })
-    if (!res.ok) throw new Error('Помилка оновлення')
-    return res.json()
   },
 
   async savePaymentMethod(paymentId) {
-    const res = await fetch(`${API_URL}/payment/method`, {
+    return authFetch(`${API_URL}/payment/method`, {
       method: 'POST',
-      headers: authHeaders(),
       body: JSON.stringify({ payment_id: paymentId }),
     })
-    if (!res.ok) throw new Error('Помилка збереження картки')
-    return res.json()
+  },
+
+  async getUser(userId) {
+    return authFetch(`${API_URL}/users/${userId}`)
   },
 
   async getDriverRating(driverId) {
-    const res = await fetch(`${API_URL}/ratings/driver/${driverId}/avg`, {
-      headers: authHeaders(),
-    })
-    return res.json()
+    return authFetch(`${API_URL}/ratings/driver/${driverId}/avg`)
   },
 }
